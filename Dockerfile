@@ -31,6 +31,45 @@ ENV FORCE_UNSAFE_CONFIGURE=1
 
 RUN ./build.sh ${TARGET}
 
+# find the correct toolchain based on TARGET var
+# to choose which toolchain pattern to keep
+# for ARM toolchains, pick the latest version
+RUN cd /build/sdk/host-tools/gcc && \
+    if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        PATTERN="riscv64-linux"; \
+        echo "using riscv64-linux toolchains matching: ${PATTERN}"; \
+        mkdir -p /tmp/keep; \
+        for tc in riscv64-linux-*; do \
+            if [ -d "$tc" ]; then \
+                echo "using: $tc"; \
+                mv "$tc" /tmp/keep/; \
+            fi; \
+        done; \
+    else \
+        if echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+            PATTERN="aarch64-linux-gnu"; \
+        elif echo "${TARGET}" | grep -qi "arm"; then \
+            PATTERN="arm-linux-gnueabihf"; \
+        else \
+            PATTERN="aarch64-linux-gnu"; \
+        fi; \
+        echo "using arm64 toolchain matching: ${PATTERN}"; \
+        SELECTED=$(find . -maxdepth 1 -type d -name "*${PATTERN}*" | sort -V | tail -1); \
+        if [ -z "$SELECTED" ]; then \
+            echo "no toolchain found matching pattern: ${PATTERN}"; \
+            ls -la .; \
+            exit 1; \
+        fi; \
+        echo "using: ${SELECTED}"; \
+        mkdir -p /tmp/keep; \
+        mv ${SELECTED} /tmp/keep/; \
+    fi && \
+    rm -rf ./* && \
+    mv /tmp/keep/* . && \
+    rm -rf /tmp/keep && \
+    echo "toolchain selection complete:" && \
+    ls -la .
+
 # cross-compile container
 FROM debian:12-slim AS cross-compile
 
@@ -52,14 +91,15 @@ RUN mkdir -p /run/sshd && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # set up cross-compilation environment
-RUN TOOLCHAIN=$(find /opt/toolchain/gcc -type d -name "*aarch64-linux-gnu" | sort -V | tail -1) && \
+RUN TOOLCHAIN=$(find /opt/toolchain/gcc -maxdepth 1 -type d ! -name gcc | head -1) && \
     ln -sf ${TOOLCHAIN}/bin/* /usr/local/bin/ && \
+    CROSS_PREFIX=$(ls ${TOOLCHAIN}/bin/*-gcc 2>/dev/null | head -1 | xargs basename | sed 's/-gcc$//') && \
     { \
         echo "export TOOLCHAIN_PATH=${TOOLCHAIN}"; \
-        echo "export CROSS_COMPILE=aarch64-linux-gnu-"; \
+        echo "export CROSS_COMPILE=${CROSS_PREFIX}-"; \
         echo "export SYSROOT=/opt/sysroot"; \
-        echo "export CC=${TOOLCHAIN}/bin/aarch64-linux-gnu-gcc"; \
-        echo "export CXX=${TOOLCHAIN}/bin/aarch64-linux-gnu-g++"; \
+        echo "export CC=${TOOLCHAIN}/bin/${CROSS_PREFIX}-gcc"; \
+        echo "export CXX=${TOOLCHAIN}/bin/${CROSS_PREFIX}-g++"; \
         echo "export PATH=${TOOLCHAIN}/bin:\$PATH"; \
         echo "export PKG_CONFIG_LIBDIR=/opt/sysroot/usr/lib/pkgconfig:/opt/sysroot/usr/share/pkgconfig"; \
         echo "export PKG_CONFIG_SYSROOT_DIR=/opt/sysroot"; \
