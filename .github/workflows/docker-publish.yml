@@ -40,7 +40,7 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: true
-          tool-cache: false
+          tool-cache: true
 
       # show available space
       - name: Display available disk space
