@@ -23,72 +23,52 @@ WORKDIR /build/sdk
 # patch parallel build race condition in build_middleware() (https://github.com/milkv-duo/duo-buildroot-sdk-v2/issues/57)
 RUN sed -i '/^function build_middleware()/,/^}/s/make all -j\$(nproc)/make all/' build/envsetup_milkv.sh
 
-ARG TARGET
-ENV FORCE_UNSAFE_CONFIGURE=1
-
-# build all SDK components individually
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && clean_all
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_uboot
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_kernel
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_ramboot
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_osdrv
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_3rd_party
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_middleware
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_cvi_rtsp
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_tpu_sdk
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_ive_sdk
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_ivs_sdk
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_tdl_sdk
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && build_pqtool_server
-
 # patch parallel build race condition (does not work otherwise)
 RUN sed -i 's|utils/brmake -j\${NPROC}|utils/brmake|' /build/sdk/build/Makefile
 
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_cfg
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_rootfs
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_rootfs
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_data
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_system
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && copy_tools
-RUN cd /build/sdk && . build/envsetup_milkv.sh ${TARGET} && pack_upgrade
+ARG TARGET
+ENV FORCE_UNSAFE_CONFIGURE=1
 
-FROM ubuntu:22.04 AS cross-compile
+RUN ./build.sh ${TARGET}
+
+# cross-compile container
+FROM debian:12-slim AS cross-compile
 
 ARG TARGETARCH
 ARG TARGET
 
 # base development tools
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    curl \
-    wget \
-    file \
-    gdb-multiarch \
-    qemu-user-static \
-    openssh-server \
+    build-essential cmake gdb-multiarch openssh-server findutils \
     && rm -rf /var/lib/apt/lists/*
 
 # copy toolchain and sysroot from builder stage
 COPY --from=builder /build/sdk/host-tools /opt/toolchain
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
+# enable ssh
 RUN mkdir -p /run/sshd && \
     echo 'root:root' | chpasswd && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# set envars for cross-compilation environment
-RUN TOOLCHAIN=$(find /opt/toolchain/gcc -type d -name "*-x86_64" | head -1) && \
-    CROSS=$(basename $TOOLCHAIN | sed 's/-x86_64//')-  && \
-    echo "export TOOLCHAIN_PATH=${TOOLCHAIN}" >> /root/.bashrc && \
-    echo "export CROSS_COMPILE=${CROSS}" >> /root/.bashrc && \
-    echo "export SYSROOT=/opt/sysroot" >> /root/.bashrc && \
-    echo "export CC=\${TOOLCHAIN}/bin/\${CROSS}gcc" >> /root/.bashrc && \
-    echo "export CXX=\${TOOLCHAIN}/bin/\${CROSS}g++" >> /root/.bashrc && \
-    echo "export AR=\${TOOLCHAIN}/bin/\${CROSS}ar" >> /root/.bashrc && \
-    echo "export STRIP=\${TOOLCHAIN}/bin/\${CROSS}strip" >> /root/.bashrc && \
-    echo "export PATH=\${TOOLCHAIN}/bin:\$PATH" >> /root/.bashrc
+# set up cross-compilation environment
+RUN TOOLCHAIN=$(find /opt/toolchain/gcc -type d -name "*aarch64-linux-gnu" | sort -V | tail -1) && \
+    ln -sf ${TOOLCHAIN}/bin/* /usr/local/bin/ && \
+    { \
+        echo "export TOOLCHAIN_PATH=${TOOLCHAIN}"; \
+        echo "export CROSS_COMPILE=aarch64-linux-gnu-"; \
+        echo "export SYSROOT=/opt/sysroot"; \
+        echo "export CC=${TOOLCHAIN}/bin/aarch64-linux-gnu-gcc"; \
+        echo "export CXX=${TOOLCHAIN}/bin/aarch64-linux-gnu-g++"; \
+        echo "export PATH=${TOOLCHAIN}/bin:\$PATH"; \
+        echo "export PKG_CONFIG_LIBDIR=/opt/sysroot/usr/lib/pkgconfig:/opt/sysroot/usr/share/pkgconfig"; \
+        echo "export PKG_CONFIG_SYSROOT_DIR=/opt/sysroot"; \
+    } >> /root/.bashrc
+
+# set environment variables for build tools
+ENV PKG_CONFIG_LIBDIR=/opt/sysroot/usr/lib/pkgconfig:/opt/sysroot/usr/share/pkgconfig
+ENV PKG_CONFIG_SYSROOT_DIR=/opt/sysroot
+ENV CMAKE_SYSROOT_DIR=/opt/sysroot
 
 WORKDIR /workspace
 EXPOSE 22
