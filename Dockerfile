@@ -78,8 +78,8 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         else \
             TOOLCHAIN_VARIANT="riscv64-none-linux-gnu"; \
         fi; \
-        TOOLCHAIN_URL="https://releases.riscstar.com/toolchain/${RISCV_TOOLCHAIN_VERSION}/riscstar-toolchain-${RISCV_TOOLCHAIN_VERSION}-${TOOLCHAIN_HOST}-${TOOLCHAIN_VARIANT}.tar.xz"; \
-        echo "downloading RISCstar toolchain for RISC-V (${TOOLCHAIN_VARIANT}, host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
+        TOOLCHAIN_URL="https://releases.riscstar.com/toolchain/${RISCV_TOOLCHAIN_VERSION}/riscstar-toolchain-${RISCV_TOOLCHAIN_VERSION}+qemu-${TOOLCHAIN_HOST}-${TOOLCHAIN_VARIANT}.tar.xz"; \
+        echo "downloading RISCstar toolchain for riscv64 (${TOOLCHAIN_VARIANT}, host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
         wget -q "${TOOLCHAIN_URL}" -O /tmp/toolchain.tar.xz && \
         mkdir -p /opt/toolchain && \
         tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
