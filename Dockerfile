@@ -123,11 +123,11 @@ RUN mkdir -p /run/sshd && \
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         CROSS_PREFIX="riscv64-linux-gnu"; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-        CROSS_PREFIX="aarch64-linux-gnu"; \
+        CROSS_PREFIX="aarch64-none-linux-gnu"; \
     elif echo "${TARGET}" | grep -qi "arm"; then \
-        CROSS_PREFIX="arm-linux-gnueabihf"; \
+        CROSS_PREFIX="arm-none-linux-gnueabihf"; \
     else \
-        CROSS_PREFIX="aarch64-linux-gnu"; \
+        CROSS_PREFIX="aarch64-none-linux-gnu"; \
     fi && \
     { \
         echo "export CROSS_COMPILE=${CROSS_PREFIX}-"; \
