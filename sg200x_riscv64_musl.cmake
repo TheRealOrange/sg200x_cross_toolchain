@@ -17,10 +17,16 @@ set(CMAKE_OBJDUMP ${CROSS_PREFIX}-objdump)
 
 # force the compiler to use only the sysroot
 # optimise for c906 (sg2000 riscv64 cores)
-set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -mtune=c906")
-set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -mtune=c906")
+set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -O2 -pipe")
+set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -O2 -pipe")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
+
+# release optimizations
+set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -ffunction-sections -fdata-sections")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -ffunction-sections -fdata-sections")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-Wl,--gc-sections -flto")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--gc-sections -flto")
 
 # search for programs only in the build host directories
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
