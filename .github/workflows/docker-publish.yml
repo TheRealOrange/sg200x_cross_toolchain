@@ -21,8 +21,7 @@ env:
 
 
 jobs:
-  build:
-
+  build-toolchain:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,6 +29,12 @@ jobs:
       # This is used to complete the identity challenge
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
+
+    strategy:
+      matrix:
+        target:
+          - milkv-duos-glibc-arm64-emmc
+          - milkv-duos-musl-riscv64-emmc
 
     steps:
       - name: Maximize Disk Space
@@ -66,25 +71,37 @@ jobs:
       # multi-platform images and export cache
       # https://github.com/docker/setup-buildx-action
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+        uses: docker/setup-buildx-action@v3.11.1
 
       # Login against a Docker registry except on PR
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        uses: docker/login-action@v3.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Set image name based on target architecture
+      - name: Set image name
+        id: image-name
+        run: |
+          if [[ "${{ matrix.target }}" == *"arm64"* ]]; then
+            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-arm64" >> $GITHUB_OUTPUT
+            echo "arch=arm64" >> $GITHUB_OUTPUT
+          elif [[ "${{ matrix.target }}" == *"riscv64"* ]]; then
+            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-riscv64" >> $GITHUB_OUTPUT
+            echo "arch=riscv64" >> $GITHUB_OUTPUT
+          fi
+
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
+        uses: docker/metadata-action@v5.9.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image-name.outputs.name }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -95,15 +112,17 @@ jobs:
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           platforms: linux/amd64, linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          build-args: |
+            TARGET=${{ matrix.target }}
 
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
@@ -119,3 +138,94 @@ jobs:
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+  # Build firmware on releases only
+  build-firmware:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        target:
+          - milkv-duos-glibc-arm64-emmc
+          - milkv-duos-musl-riscv64-emmc
+
+    steps:
+      - name: Maximize Disk Space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          tool-cache: true
+
+      # show available space
+      - name: Display available disk space
+        run: df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Docker Buildx for firmware build
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
+      # Build only the builder stage and load into Docker
+      - name: Build firmware
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          target: builder
+          platforms: linux/amd64
+          load: true
+          tags: temp-builder-${{ matrix.target }}:latest
+          cache-from: type=gha,scope=${{ matrix.target }}-firmware
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-firmware
+          build-args: |
+            TARGET=${{ matrix.target }}
+
+      # Extract firmware from the built image
+      - name: Extract firmware files
+        run: |
+          container_id=$(docker create temp-builder-${{ matrix.target }}:latest)
+          mkdir -p ./firmware-output
+          docker cp $container_id:/build/sdk/out/. ./firmware-output/ || true
+          docker rm $container_id
+          echo "Extracted firmware files:"
+          ls -lah ./firmware-output/
+
+      # Set architecture name for artifacts
+      - name: Set architecture name
+        id: arch-name
+        run: |
+          if [[ "${{ matrix.target }}" == *"arm64"* ]]; then
+            echo "arch=arm64" >> $GITHUB_OUTPUT
+          elif [[ "${{ matrix.target }}" == *"riscv64"* ]]; then
+            echo "arch=riscv64" >> $GITHUB_OUTPUT
+          fi
+
+      # Upload firmware to GitHub Release
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2.4.1
+        with:
+          files: |
+            ./firmware-output/*.img
+            ./firmware-output/*.zip
+          fail_on_unmatched_files: false
+          tag_name: ${{ github.ref_name }}
+          name: release ${{ github.ref_name }}
+          body: |
+            ### Docker Images
+            Pull the cross-compilation toolchain for your target architecture:
+            ```bash
+            # ARM64 cross compilation toolchain
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-arm64:${{ github.ref_name }}
+
+            # RISC-V64 cross compilation toolchain
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-riscv64:${{ github.ref_name }}
+            ```
+
