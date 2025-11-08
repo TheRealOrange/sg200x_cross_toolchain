@@ -157,3 +157,41 @@ WORKDIR /workspace
 EXPOSE 22
 
 CMD ["/usr/sbin/sshd", "-D"]
+
+# test stage to validate cross-compilation
+FROM cross-compile AS test
+
+# install qemu for running cross-compiled binaries
+RUN apt-get update && \
+    apt-get install -y qemu-user-static && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY test.c /test/test.c
+
+ARG TARGET
+RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        if echo "${TARGET}" | grep -qi "musl"; then \
+            CROSS_PREFIX="riscv64-none-linux-musl"; \
+        else \
+            CROSS_PREFIX="riscv64-none-linux-gnu"; \
+        fi; \
+        echo "compiling test for riscv64 (${CROSS_PREFIX})..."; \
+        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_riscv /test/test.c -lm && \
+        echo "running test with qemu riscv64..." && \
+        qemu-riscv64-static -L /opt/sysroot /test/test_riscv; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+        CROSS_PREFIX="aarch64-none-linux-gnu"; \
+        echo "compiling test for arm64 (${CROSS_PREFIX})..."; \
+        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_arm64 /test/test.c -lm && \
+        echo "running test with qemu arm64..." && \
+        qemu-aarch64-static -L /opt/sysroot /test/test_arm64; \
+    elif echo "${TARGET}" | grep -qi "arm"; then \
+        CROSS_PREFIX="arm-none-linux-gnueabihf"; \
+        echo "compiling test for arm32 (${CROSS_PREFIX})..."; \
+        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_arm32 /test/test.c -lm && \
+        echo "running test with qemu arm32..." && \
+        qemu-arm-static -L /opt/sysroot /test/test_arm32; \
+    fi
+
+# set cross-compile as default stage
+FROM cross-compile
