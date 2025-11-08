@@ -150,7 +150,12 @@ jobs:
       matrix:
         target:
           - milkv-duos-glibc-arm64-emmc
+          - milkv-duos-glibc-arm64-sd
           - milkv-duos-musl-riscv64-emmc
+          - milkv-duos-musl-riscv64-sd
+          - milkv-duo256m-glibc-arm64-sd
+          - milkv-duo256m-musl-riscv64-sd
+          - milkv-duo-musl-riscv64-sd
 
     steps:
       - name: Maximize Disk Space
