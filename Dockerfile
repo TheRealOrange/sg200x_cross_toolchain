@@ -24,11 +24,6 @@ RUN mv host-tools sdk/ && \
     rm dl.tar
 
 WORKDIR /build/sdk
-# patch parallel build race condition in build_middleware() (https://github.com/milkv-duo/duo-buildroot-sdk-v2/issues/57)
-RUN sed -i '/^function build_middleware()/,/^}/s/make all -j\$(nproc)/make all/' build/envsetup_milkv.sh
-
-# patch parallel build race condition (does not work otherwise)
-RUN sed -i 's|utils/brmake -j\${NPROC}|utils/brmake|' /build/sdk/build/Makefile
 
 ARG TARGET
 ENV FORCE_UNSAFE_CONFIGURE=1
