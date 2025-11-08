@@ -21,7 +21,106 @@ env:
 
 
 jobs:
+  # Build the builder stage (buildroot sdk compilation)
+  build-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        target:
+          - milkv-duos-glibc-arm64-emmc
+          - milkv-duos-musl-riscv64-emmc
+
+    steps:
+      - name: Maximize Disk Space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          tool-cache: true
+
+      # show available space
+      - name: Display available disk space
+        run: df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up BuildKit Docker container builder to be able to build
+      # multi-platform images and export cache
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
+      # https://github.com/docker/build-push-action
+      - name: Build SDK (cache only)
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          target: builder
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            TARGET=${{ matrix.target }}
+          # Save builder cache for test and toolchain jobs to use
+          cache-from: type=gha,scope=${{ matrix.target }}-builder
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-builder
+
+  # Test cross-compilation setup
+  test:
+    needs: build-sdk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    strategy:
+      matrix:
+        target:
+          - milkv-duos-glibc-arm64-emmc
+          - milkv-duos-musl-riscv64-emmc
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up QEMU for multi-platform builds
+      # https://github.com/docker/setup-qemu-action
+      - name: Docker Setup QEMU
+        uses: docker/setup-qemu-action@v3.7.0
+
+      # Set up BuildKit Docker container builder to be able to build
+      # multi-platform images and export cache
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
+      # https://github.com/docker/build-push-action
+      - name: Test cross-compilation on ${{ matrix.platform }}
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          target: test
+          platforms: ${{ matrix.platform }}
+          push: false
+          build-args: |
+            TARGET=${{ matrix.target }}
+          # Use builder cache from build-sdk job and previous test cache
+          cache-from: |
+            type=gha,scope=${{ matrix.target }}-builder
+            type=gha,scope=${{ matrix.target }}-test-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-test-${{ matrix.platform }}
+
   build-toolchain:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -115,11 +214,14 @@ jobs:
         uses: docker/build-push-action@v6.18.0
         with:
           context: .
+          target: cross-compile
           platforms: linux/amd64, linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-from: |
+            type=gha,scope=${{ matrix.target }}-builder
+            type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}
           build-args: |
             TARGET=${{ matrix.target }}
@@ -188,7 +290,9 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: temp-builder-${{ matrix.target }}:latest
-          cache-from: type=gha,scope=${{ matrix.target }}-firmware
+          cache-from: |
+            type=gha,scope=${{ matrix.target }}-builder
+            type=gha,scope=${{ matrix.target }}-firmware
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}-firmware
           build-args: |
             TARGET=${{ matrix.target }}
