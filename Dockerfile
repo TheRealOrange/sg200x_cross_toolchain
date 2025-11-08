@@ -99,6 +99,21 @@ RUN apt-get update && \
 # copy the sysroot from the builder stage
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
+# symlink sysroot to where debians cross-compiler expects libraries
+RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        mkdir -p /lib/riscv64-linux-gnu /usr/lib/riscv64-linux-gnu && \
+        ln -sf /opt/sysroot/lib/* /lib/riscv64-linux-gnu/ && \
+        ln -sf /opt/sysroot/usr/lib/* /usr/lib/riscv64-linux-gnu/; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+        mkdir -p /lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu && \
+        ln -sf /opt/sysroot/lib/* /lib/aarch64-linux-gnu/ && \
+        ln -sf /opt/sysroot/usr/lib/* /usr/lib/aarch64-linux-gnu/; \
+    elif echo "${TARGET}" | grep -qi "arm"; then \
+        mkdir -p /lib/arm-linux-gnueabihf /usr/lib/arm-linux-gnueabihf && \
+        ln -sf /opt/sysroot/lib/* /lib/arm-linux-gnueabihf/ && \
+        ln -sf /opt/sysroot/usr/lib/* /usr/lib/arm-linux-gnueabihf/; \
+    fi
+
 # enable ssh
 RUN mkdir -p /run/sshd && \
     echo 'root:root' | chpasswd && \
