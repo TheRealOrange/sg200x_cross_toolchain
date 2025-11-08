@@ -1,5 +1,6 @@
 ARG TARGET=milkv-duos-glibc-arm64-emmc
 ARG SDK_HASH=6f8962c394dd0a05729abb089f0feb7d5cc4aa5e
+ARG ARM_TOOLCHAIN_VERSION=14.3.Rel1
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 ARG TARGETARCH
@@ -73,21 +74,11 @@ RUN cd /build/sdk/host-tools/gcc && \
 # cross-compile container
 FROM debian:12-slim AS cross-compile
 
-ARG TARGETARCH
-ARG TARGET
-
-# install toolchains based on TARGET for cross compiling
+# install base dependencies
 RUN apt-get update && \
-    if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu; \
-    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-        apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; \
-    elif echo "${TARGET}" | grep -qi "arm"; then \
-        apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf; \
-    else \
-        apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; \
-    fi && \
     apt-get install -y \
+        wget \
+        xz-utils \
         build-essential \
         cmake \
         gdb-multiarch \
@@ -96,22 +87,67 @@ RUN apt-get update && \
         && \
     rm -rf /var/lib/apt/lists/*
 
+ARG TARGETARCH
+ARG TARGET
+ARG ARM_TOOLCHAIN_VERSION
+
+# install toolchains based on TARGET
+# for riscv64 use debian's toolchain (needs symlinks)
+# for arm64/arm32 download arm's official toolchain
+RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        apt-get update && \
+        apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu && \
+        rm -rf /var/lib/apt/lists/*; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+        # Map TARGETARCH to ARM's toolchain host naming
+        if [ "${TARGETARCH}" = "amd64" ]; then \
+            TOOLCHAIN_HOST="x86_64"; \
+        elif [ "${TARGETARCH}" = "arm64" ]; then \
+            TOOLCHAIN_HOST="aarch64"; \
+        else \
+            echo "unsupported TARGETARCH: ${TARGETARCH}"; \
+            exit 1; \
+        fi; \
+        TOOLCHAIN_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-${TOOLCHAIN_HOST}-aarch64-none-linux-gnu.tar.xz"; \
+        echo "downloading arm toolchain for aarch64 (host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
+        wget -q "${TOOLCHAIN_URL}" -O /tmp/toolchain.tar.xz && \
+        mkdir -p /opt/toolchain && \
+        tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
+        rm /tmp/toolchain.tar.xz; \
+    elif echo "${TARGET}" | grep -qi "arm"; then \
+        # Map TARGETARCH to ARM's toolchain host naming
+        if [ "${TARGETARCH}" = "amd64" ]; then \
+            TOOLCHAIN_HOST="x86_64"; \
+        elif [ "${TARGETARCH}" = "arm64" ]; then \
+            TOOLCHAIN_HOST="aarch64"; \
+        else \
+            echo "Unsupported TARGETARCH: ${TARGETARCH}"; \
+            exit 1; \
+        fi; \
+        TOOLCHAIN_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-${TOOLCHAIN_HOST}-arm-none-linux-gnueabihf.tar.xz"; \
+        echo "downloading arm toolchain for arm32 (host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
+        wget -q "${TOOLCHAIN_URL}" -O /tmp/toolchain.tar.xz && \
+        mkdir -p /opt/toolchain && \
+        tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
+        rm /tmp/toolchain.tar.xz; \
+    fi
+
+# add arm toolchain to path
+RUN if echo "${TARGET}" | grep -qi "arm64\|aarch64\|arm"; then \
+        echo 'export PATH="/opt/toolchain/bin:$PATH"' >> /root/.bashrc; \
+    fi
+ENV PATH="/opt/toolchain/bin:${PATH}"
+
 # copy the sysroot from the builder stage
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
-# symlink sysroot to where debians cross-compiler expects libraries
+# symlink sysroot for riscv targets (debian is stinky and its toolchain has hardcoded paths)
+# arm's official toolchain respects --sysroot
+# hacky as hell i hate this actually
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         mkdir -p /lib/riscv64-linux-gnu /usr/lib/riscv64-linux-gnu && \
-        cp -rs /opt/sysroot/lib/* /lib/riscv64-linux-gnu/ && \
-        cp -rs /opt/sysroot/usr/lib/* /usr/lib/riscv64-linux-gnu/; \
-    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-        mkdir -p /lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu && \
-        cp -rs /opt/sysroot/lib/* /lib/aarch64-linux-gnu/ && \
-        cp -rs /opt/sysroot/usr/lib/* /usr/lib/aarch64-linux-gnu/; \
-    elif echo "${TARGET}" | grep -qi "arm"; then \
-        mkdir -p /lib/arm-linux-gnueabihf /usr/lib/arm-linux-gnueabihf && \
-        cp -rs /opt/sysroot/lib/* /lib/arm-linux-gnueabihf/ && \
-        cp -rs /opt/sysroot/usr/lib/* /usr/lib/arm-linux-gnueabihf/; \
+        cd /opt/sysroot/lib && for f in *; do ln -sf "/opt/sysroot/lib/$f" "/lib/riscv64-linux-gnu/$f"; done && \
+        cd /opt/sysroot/usr/lib && for f in *; do ln -sf "/opt/sysroot/usr/lib/$f" "/usr/lib/riscv64-linux-gnu/$f"; done; \
     fi
 
 # enable ssh
