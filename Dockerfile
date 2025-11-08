@@ -8,17 +8,19 @@ ARG TARGETARCH
 FROM --platform=linux/amd64 milkvtech/milkv-duo:latest AS builder
 
 WORKDIR /build
-RUN git clone https://github.com/milkv-duo/duo-buildroot-sdk-v2.git sdk
-RUN git clone https://github.com/milkv-duo/host-tools.git host-tools
-RUN wget https://github.com/milkv-duo/duo-buildroot-sdk-v2/releases/download/dl/dl.tar
+RUN git clone https://github.com/milkv-duo/duo-buildroot-sdk-v2.git sdk && \
+    git clone https://github.com/milkv-duo/host-tools.git host-tools && \
+    wget https://github.com/milkv-duo/duo-buildroot-sdk-v2/releases/download/dl/dl.tar
+
 
 ARG SDK_HASH
 WORKDIR /build/sdk
 RUN git checkout ${SDK_HASH}
 
 WORKDIR /build
-RUN cp -a host-tools sdk/
-RUN tar xf dl.tar -C sdk/buildroot/ && rm dl.tar
+RUN mv host-tools sdk/ && \
+    tar xf dl.tar -C sdk/buildroot/ && \
+    rm dl.tar
 
 WORKDIR /build/sdk
 # patch parallel build race condition in build_middleware() (https://github.com/milkv-duo/duo-buildroot-sdk-v2/issues/57)
