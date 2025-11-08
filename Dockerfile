@@ -32,44 +32,8 @@ ENV FORCE_UNSAFE_CONFIGURE=1
 
 RUN ./build.sh ${TARGET}
 
-# find the correct toolchain based on TARGET var
-# to choose which toolchain pattern to keep
-# for ARM toolchains, pick the latest version
-RUN cd /build/sdk/host-tools/gcc && \
-    if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        PATTERN="riscv64-linux"; \
-        echo "using riscv64-linux toolchains matching: ${PATTERN}"; \
-        mkdir -p /tmp/keep; \
-        for tc in riscv64-linux-*; do \
-            if [ -d "$tc" ]; then \
-                echo "using: $tc"; \
-                mv "$tc" /tmp/keep/; \
-            fi; \
-        done; \
-    else \
-        if echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-            PATTERN="aarch64-linux-gnu"; \
-        elif echo "${TARGET}" | grep -qi "arm"; then \
-            PATTERN="arm-linux-gnueabihf"; \
-        else \
-            PATTERN="aarch64-linux-gnu"; \
-        fi; \
-        echo "using arm64 toolchain matching: ${PATTERN}"; \
-        SELECTED=$(find . -maxdepth 1 -type d -name "*${PATTERN}*" | sort -V | tail -1); \
-        if [ -z "$SELECTED" ]; then \
-            echo "no toolchain found matching pattern: ${PATTERN}"; \
-            ls -la .; \
-            exit 1; \
-        fi; \
-        echo "using: ${SELECTED}"; \
-        mkdir -p /tmp/keep; \
-        mv ${SELECTED} /tmp/keep/; \
-    fi && \
-    rm -rf ./* && \
-    mv /tmp/keep/* . && \
-    rm -rf /tmp/keep && \
-    echo "toolchain selection complete:" && \
-    ls -la .
+# we wont use the toolchains from host-tools because
+# we will just use official toolchains
 
 # cross-compile container
 FROM debian:12-slim AS cross-compile
