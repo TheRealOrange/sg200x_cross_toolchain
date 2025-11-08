@@ -76,13 +76,27 @@ FROM debian:12-slim AS cross-compile
 ARG TARGETARCH
 ARG TARGET
 
-# base development tools
-RUN apt-get update && apt-get install -y \
-    build-essential cmake gdb-multiarch openssh-server findutils \
-    && rm -rf /var/lib/apt/lists/*
+# install toolchains based on TARGET for cross compiling
+RUN apt-get update && \
+    if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+        apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; \
+    elif echo "${TARGET}" | grep -qi "arm"; then \
+        apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf; \
+    else \
+        apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; \
+    fi && \
+    apt-get install -y \
+        build-essential \
+        cmake \
+        gdb-multiarch \
+        openssh-server \
+        findutils \
+        && \
+    rm -rf /var/lib/apt/lists/*
 
-# copy toolchain and sysroot from builder stage
-COPY --from=builder /build/sdk/host-tools /opt/toolchain
+# copy the sysroot from the builder stage
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
 # enable ssh
@@ -90,17 +104,21 @@ RUN mkdir -p /run/sshd && \
     echo 'root:root' | chpasswd && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# set up cross-compilation environment
-RUN TOOLCHAIN=$(find /opt/toolchain/gcc -maxdepth 1 -type d ! -name gcc | head -1) && \
-    ln -sf ${TOOLCHAIN}/bin/* /usr/local/bin/ && \
-    CROSS_PREFIX=$(ls ${TOOLCHAIN}/bin/*-gcc 2>/dev/null | head -1 | xargs basename | sed 's/-gcc$//') && \
+# set up envars for cross compilation environment based on TARGET
+RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        CROSS_PREFIX="riscv64-linux-gnu"; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
+        CROSS_PREFIX="aarch64-linux-gnu"; \
+    elif echo "${TARGET}" | grep -qi "arm"; then \
+        CROSS_PREFIX="arm-linux-gnueabihf"; \
+    else \
+        CROSS_PREFIX="aarch64-linux-gnu"; \
+    fi && \
     { \
-        echo "export TOOLCHAIN_PATH=${TOOLCHAIN}"; \
         echo "export CROSS_COMPILE=${CROSS_PREFIX}-"; \
         echo "export SYSROOT=/opt/sysroot"; \
-        echo "export CC=${TOOLCHAIN}/bin/${CROSS_PREFIX}-gcc"; \
-        echo "export CXX=${TOOLCHAIN}/bin/${CROSS_PREFIX}-g++"; \
-        echo "export PATH=${TOOLCHAIN}/bin:\$PATH"; \
+        echo "export CC=${CROSS_PREFIX}-gcc"; \
+        echo "export CXX=${CROSS_PREFIX}-g++"; \
         echo "export PKG_CONFIG_LIBDIR=/opt/sysroot/usr/lib/pkgconfig:/opt/sysroot/usr/share/pkgconfig"; \
         echo "export PKG_CONFIG_SYSROOT_DIR=/opt/sysroot"; \
     } >> /root/.bashrc
