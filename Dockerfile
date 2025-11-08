@@ -1,6 +1,7 @@
 ARG TARGET=milkv-duos-glibc-arm64-emmc
 ARG SDK_HASH=6f8962c394dd0a05729abb089f0feb7d5cc4aa5e
 ARG ARM_TOOLCHAIN_VERSION=14.3.Rel1
+ARG RISCV_TOOLCHAIN_VERSION=15.2-r1
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 ARG TARGETARCH
@@ -56,14 +57,33 @@ RUN apt-get update && \
 ARG TARGETARCH
 ARG TARGET
 ARG ARM_TOOLCHAIN_VERSION
+ARG RISCV_TOOLCHAIN_VERSION
 
 # install toolchains based on TARGET
-# for riscv64 use debian's toolchain (needs symlinks)
-# for arm64/arm32 download arm's official toolchain
+# for riscv64: download riscstar toolchain
+# for arm64/arm32: download arm's official toolchain
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        apt-get update && \
-        apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu && \
-        rm -rf /var/lib/apt/lists/*; \
+        # Map TARGETARCH to toolchain host naming
+        if [ "${TARGETARCH}" = "amd64" ]; then \
+            TOOLCHAIN_HOST="x86_64"; \
+        elif [ "${TARGETARCH}" = "arm64" ]; then \
+            TOOLCHAIN_HOST="aarch64"; \
+        else \
+            echo "unsupported TARGETARCH: ${TARGETARCH}"; \
+            exit 1; \
+        fi; \
+        # Determine if target uses musl or glibc
+        if echo "${TARGET}" | grep -qi "musl"; then \
+            TOOLCHAIN_VARIANT="riscv64-none-linux-musl"; \
+        else \
+            TOOLCHAIN_VARIANT="riscv64-none-linux-gnu"; \
+        fi; \
+        TOOLCHAIN_URL="https://releases.riscstar.com/toolchain/${RISCV_TOOLCHAIN_VERSION}/riscstar-toolchain-${RISCV_TOOLCHAIN_VERSION}-${TOOLCHAIN_HOST}-${TOOLCHAIN_VARIANT}.tar.xz"; \
+        echo "downloading RISCstar toolchain for RISC-V (${TOOLCHAIN_VARIANT}, host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
+        wget -q "${TOOLCHAIN_URL}" -O /tmp/toolchain.tar.xz && \
+        mkdir -p /opt/toolchain && \
+        tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
+        rm /tmp/toolchain.tar.xz; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         # Map TARGETARCH to ARM's toolchain host naming
         if [ "${TARGETARCH}" = "amd64" ]; then \
@@ -98,23 +118,12 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         rm /tmp/toolchain.tar.xz; \
     fi
 
-# add arm toolchain to path
-RUN if echo "${TARGET}" | grep -qi "arm64\|aarch64\|arm"; then \
-        echo 'export PATH="/opt/toolchain/bin:$PATH"' >> /root/.bashrc; \
-    fi
+# add toolchain to path
 ENV PATH="/opt/toolchain/bin:${PATH}"
+RUN echo 'export PATH="/opt/toolchain/bin:$PATH"' >> /root/.bashrc
 
 # copy the sysroot from the builder stage
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
-
-# symlink sysroot for riscv targets (debian is stinky and its toolchain has hardcoded paths)
-# arm's official toolchain respects --sysroot
-# hacky as hell i hate this actually
-RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        mkdir -p /lib/riscv64-linux-gnu /usr/lib/riscv64-linux-gnu && \
-        cd /opt/sysroot/lib && for f in *; do ln -sf "/opt/sysroot/lib/$f" "/lib/riscv64-linux-gnu/$f"; done && \
-        cd /opt/sysroot/usr/lib && for f in *; do ln -sf "/opt/sysroot/usr/lib/$f" "/usr/lib/riscv64-linux-gnu/$f"; done; \
-    fi
 
 # enable ssh
 RUN mkdir -p /run/sshd && \
@@ -123,7 +132,11 @@ RUN mkdir -p /run/sshd && \
 
 # set up envars for cross compilation environment based on TARGET
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        CROSS_PREFIX="riscv64-linux-gnu"; \
+        if echo "${TARGET}" | grep -qi "musl"; then \
+            CROSS_PREFIX="riscv64-none-linux-musl"; \
+        else \
+            CROSS_PREFIX="riscv64-none-linux-gnu"; \
+        fi; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         CROSS_PREFIX="aarch64-none-linux-gnu"; \
     elif echo "${TARGET}" | grep -qi "arm"; then \
