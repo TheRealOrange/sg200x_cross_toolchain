@@ -16,8 +16,9 @@ set(CMAKE_OBJCOPY ${CROSS_PREFIX}-objcopy)
 set(CMAKE_OBJDUMP ${CROSS_PREFIX}-objdump)
 
 # force the compiler to use only the sysroot
-set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
-set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
+# optimise for cortex-a53 (sg2000 arm64 cores)
+set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -mcpu=cortex-a53")
+set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -mcpu=cortex-a53")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
 

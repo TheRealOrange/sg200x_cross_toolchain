@@ -88,10 +88,10 @@ jobs:
         id: image-name
         run: |
           if [[ "${{ matrix.target }}" == *"arm64"* ]]; then
-            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-arm64" >> $GITHUB_OUTPUT
+            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_arm64" >> $GITHUB_OUTPUT
             echo "arch=arm64" >> $GITHUB_OUTPUT
           elif [[ "${{ matrix.target }}" == *"riscv64"* ]]; then
-            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-riscv64" >> $GITHUB_OUTPUT
+            echo "name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_riscv64" >> $GITHUB_OUTPUT
             echo "arch=riscv64" >> $GITHUB_OUTPUT
           fi
 
@@ -223,9 +223,9 @@ jobs:
             Pull the cross-compilation toolchain for your target architecture:
             ```bash
             # ARM64 cross compilation toolchain
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-arm64:${{ github.ref_name }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_arm64:${{ github.ref_name }}
 
             # RISC-V64 cross compilation toolchain
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-riscv64:${{ github.ref_name }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_riscv64:${{ github.ref_name }}
             ```
 
