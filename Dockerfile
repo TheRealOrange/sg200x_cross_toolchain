@@ -53,7 +53,7 @@ RUN apk add --no-cache \
 ARG CMAKE_VERSION
 RUN wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -O /tmp/cmake-install.sh && \
     chmod +x /tmp/cmake-install.sh && \
-    /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
+    /tmp/cmake-install.sh --skip-license --prefix=/usr && \
     rm /tmp/cmake-install.sh && \
     cmake --version
 
