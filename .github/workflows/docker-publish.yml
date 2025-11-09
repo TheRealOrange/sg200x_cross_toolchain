@@ -302,24 +302,24 @@ jobs:
           context: .
           target: builder
           platforms: linux/amd64
-          load: true
-          tags: temp-builder-${{ matrix.target }}:latest
+          push: false
+          outputs: type=local,dest=./firmware-output
           cache-from: |
             type=gha,scope=${{ matrix.target }}-builder
             type=gha,scope=${{ matrix.target }}-firmware
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}-firmware
           build-args: |
             TARGET=${{ matrix.target }}
-
-      # Extract firmware from the built image
-      - name: Extract firmware files
+            
+      # Move firmware files from extracted build directory
+      - name: Organize firmware files
         run: |
-          container_id=$(docker create temp-builder-${{ matrix.target }}:latest)
-          mkdir -p ./firmware-output
-          docker cp $container_id:/build/sdk/out/. ./firmware-output/ || true
-          docker rm $container_id
-          echo "Extracted firmware files:"
-          ls -lah ./firmware-output/
+          echo "Extracted files:"
+          find ./firmware-output -name "*.img" -o -name "*.zip" || true
+          mkdir -p ./release-firmware
+          find ./firmware-output/build/sdk/out -type f \( -name "*.img" -o -name "*.zip" \) -exec cp {} ./release-firmware/ \; 2>/dev/null || true
+          echo "Release firmware files:"
+          ls -lah ./release-firmware/ || echo "No firmware files found"
 
       # Set architecture name for artifacts
       - name: Set architecture name
@@ -336,8 +336,8 @@ jobs:
         uses: softprops/action-gh-release@v2.4.1
         with:
           files: |
-            ./firmware-output/*.img
-            ./firmware-output/*.zip
+            ./release-firmware/*.img
+            ./release-firmware/*.zip
           fail_on_unmatched_files: false
           tag_name: ${{ github.ref_name }}
           name: release ${{ github.ref_name }}
