@@ -2,6 +2,7 @@ ARG TARGET=milkv-duos-glibc-arm64-emmc
 ARG SDK_HASH=6f8962c394dd0a05729abb089f0feb7d5cc4aa5e
 ARG ARM_TOOLCHAIN_VERSION=14.3.Rel1
 ARG RISCV_TOOLCHAIN_VERSION=15.2-r1
+ARG CMAKE_VERSION=4.1.2
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 ARG TARGETARCH
@@ -46,17 +47,17 @@ RUN apt-get update && \
         make \
         gdb-multiarch \
         openssh-server \
-        gpg \
         && \
-    apt-get -y remove --purge --auto-remove cmake
-
-# add newer version of cmake
-RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
-    echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/debian/ bookworm main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
-
-RUN apt-get update && \
-        apt-get install -y cmake &&\
+    apt-get -y remove --purge --auto-remove cmake && \
     rm -rf /var/lib/apt/lists/*
+
+# install newer cmake from official kitware binary
+ARG CMAKE_VERSION
+RUN wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -O /tmp/cmake-install.sh && \
+    chmod +x /tmp/cmake-install.sh && \
+    /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
+    rm /tmp/cmake-install.sh && \
+    cmake --version
 
 ARG TARGET
 ARG ARM_TOOLCHAIN_VERSION
@@ -170,13 +171,19 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
             TOOLCHAIN_FILE="sg200x_riscv64_gnu.cmake"; \
         fi; \
         echo "compiling test for riscv64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} --build /test/ && \
-        echo "running test with qemu riscv64..." && \
-        qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
+        cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} -S /test -B /test/build; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         TOOLCHAIN_FILE="sg200x_arm64_gnu.cmake"; \
         echo "compiling test for arm64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} --build /test/ && \
+        cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} -S /test -B /test/build; \
+    fi
+
+RUN cmake --build /test/build
+
+RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
+        echo "running test with qemu riscv64..." && \
+        qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
+    elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         echo "running test with qemu arm64..." && \
         qemu-aarch64-static -L /opt/sysroot /test/build/test_exec; \
     fi
