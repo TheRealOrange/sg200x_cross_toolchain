@@ -47,7 +47,7 @@ RUN apk add --no-cache \
         gdb \
         openssh-server \
         bash \
-        libstdc++
+        libc6-compat
 
 # install cmake from official kitware binary
 ARG CMAKE_VERSION
