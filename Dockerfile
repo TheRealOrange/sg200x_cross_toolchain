@@ -43,12 +43,19 @@ RUN apt-get update && \
     apt-get install -y \
         wget \
         xz-utils \
-        build-essential \
-        cmake \
+        make \
         gdb-multiarch \
         openssh-server \
-        findutils \
+        gpg \
         && \
+    apt-get -y remove --purge --auto-remove cmake
+
+# add newer version of cmake
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
+    echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/debian/ bookworm main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
+
+RUN apt-get update && \
+        apt-get install -y cmake &&\
     rm -rf /var/lib/apt/lists/*
 
 ARG TARGET
@@ -163,13 +170,13 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
             TOOLCHAIN_FILE="sg200x_riscv64_gnu.cmake"; \
         fi; \
         echo "compiling test for riscv64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} --build /test/ && \
         echo "running test with qemu riscv64..." && \
         qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         TOOLCHAIN_FILE="sg200x_arm64_gnu.cmake"; \
         echo "compiling test for arm64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=/test/${TOOLCHAIN_FILE} --build /test/ && \
         echo "running test with qemu arm64..." && \
         qemu-aarch64-static -L /opt/sysroot /test/build/test_exec; \
     fi
