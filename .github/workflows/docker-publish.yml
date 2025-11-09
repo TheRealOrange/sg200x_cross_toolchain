@@ -296,11 +296,11 @@ jobs:
         uses: docker/setup-buildx-action@v3.11.1
 
       # Build only the builder stage and load into Docker
-      - name: Build firmware
+      - name: Build and extract firmware
         uses: docker/build-push-action@v6.18.0
         with:
           context: .
-          target: builder
+          target: firmware-export
           platforms: linux/amd64
           push: false
           outputs: type=local,dest=./firmware-output
@@ -310,14 +310,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}-firmware
           build-args: |
             TARGET=${{ matrix.target }}
-            
-      # Move firmware files from extracted build directory
+
+      # Move firmware files to release directory
       - name: Organize firmware files
         run: |
-          echo "Extracted files:"
-          find ./firmware-output -name "*.img" -o -name "*.zip" || true
+          echo "Extracted firmware files:"
+          ls -lah ./firmware-output/firmware/ || ls -lah ./firmware-output/
           mkdir -p ./release-firmware
-          find ./firmware-output/build/sdk/out -type f \( -name "*.img" -o -name "*.zip" \) -exec cp {} ./release-firmware/ \; 2>/dev/null || true
+          find ./firmware-output -type f \( -name "*.img" -o -name "*.zip" \) -exec cp {} ./release-firmware/ \; 2>/dev/null || true
           echo "Release firmware files:"
           ls -lah ./release-firmware/ || echo "No firmware files found"
 

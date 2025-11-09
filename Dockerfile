@@ -34,6 +34,11 @@ RUN ./build.sh ${TARGET}
 # we wont use the toolchains from host-tools because
 # we will just use official toolchains
 
+# firmware extraction
+FROM scratch AS firmware-export
+ARG TARGET
+COPY --from=builder /build/sdk/out/ /firmware/
+
 # cross-compile container
 FROM debian:12-slim AS cross-compile
 
