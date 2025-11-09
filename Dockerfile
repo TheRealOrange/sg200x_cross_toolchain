@@ -194,12 +194,12 @@ COPY --from=test-build /test/build/test_exec /workspace/test_exec
 # run ldd using qemu to check linking
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         echo "checking linking using qemu riscv64"; \
-        QEMU_LD_PATH=$(find /opt/sysroot/lib /opt/sysroot/usr/lib -name 'ld-linux-riscv64*.so.*' 2>/dev/null | head -n 1); \
+        QEMU_LD_PATH=$(find /opt/sysroot/lib* /opt/sysroot/usr/lib* -name 'ld-musl-riscv64.so.1' 2>/dev/null | head -n 1); \
         if [ -z "$QEMU_LD_PATH" ]; then echo "target linker not found in sysroot!"; exit 1; fi; \
         qemu-riscv64 -L /opt/sysroot "$QEMU_LD_PATH" --list /workspace/test_exec; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         echo "checking linking using qemu arm64"; \
-        QEMU_LD_PATH=$(find /opt/sysroot/lib /opt/sysroot/usr/lib -name 'ld-linux-aarch64*.so.*' 2>/dev/null | head -n 1); \
+        QEMU_LD_PATH=$(find /opt/sysroot/lib* /opt/sysroot/usr/lib* -name 'ld-linux-aarch64.so.1' 2>/dev/null | head -n 1); \
         if [ -z "$QEMU_LD_PATH" ]; then echo "target linker not found in sysroot!"; exit 1; fi; \
         qemu-aarch64 -L /opt/sysroot "$QEMU_LD_PATH" --list /workspace/test_exec; \
     fi
