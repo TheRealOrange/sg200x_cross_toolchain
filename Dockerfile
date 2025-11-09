@@ -36,6 +36,8 @@ RUN ./build.sh ${TARGET}
 # cross-compile container
 FROM debian:12-slim AS cross-compile
 
+ARG TARGETARCH
+
 # install base dependencies
 RUN apt-get update && \
     apt-get install -y \
@@ -49,7 +51,6 @@ RUN apt-get update && \
         && \
     rm -rf /var/lib/apt/lists/*
 
-ARG TARGETARCH
 ARG TARGET
 ARG ARM_TOOLCHAIN_VERSION
 ARG RISCV_TOOLCHAIN_VERSION
@@ -161,6 +162,8 @@ CMD ["/usr/sbin/sshd", "-D"]
 # test stage to validate cross-compilation
 FROM cross-compile AS test
 
+ARG TARGETARCH
+
 # install qemu for running cross-compiled binaries
 RUN apt-get update && \
     apt-get install -y qemu-user-static && \
@@ -193,5 +196,5 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         qemu-arm-static -L /opt/sysroot /test/test_arm32; \
     fi
 
-# set cross-compile as default stage
+# set cross-compile back as default stage
 FROM cross-compile
