@@ -163,15 +163,15 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
             TOOLCHAIN_FILE="sg200x_riscv64_gnu.cmake"; \
         fi; \
         echo "compiling test for riscv64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && && \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && \
         echo "running test with qemu riscv64..." && \
         qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         TOOLCHAIN_FILE="sg200x_arm64_gnu.cmake"; \
         echo "compiling test for arm64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
-        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && && \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && \
         echo "running test with qemu arm64..." && \
-        qemu-aarch64-static -L /opt/sysroot /test/test_exec; \
+        qemu-aarch64-static -L /opt/sysroot /test/build/test_exec; \
     fi
 
 # set cross-compile back as default stage

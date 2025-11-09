@@ -17,8 +17,8 @@ set(CMAKE_OBJDUMP ${CROSS_PREFIX}-objdump)
 
 # force the compiler to use only the sysroot
 # optimise for c906 (sg2000 riscv64 cores)
-set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -O2 -pipe")
-set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv -O2 -pipe")
+set(CMAKE_C_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv0p7 -mcmodel=medany -mabi=lp64d -O2 -pipe")
+set(CMAKE_CXX_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT} -march=rv64imafdcv0p7 -mcmodel=medany -mabi=lp64d -O2 -pipe")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "--sysroot=${CMAKE_SYSROOT}")
 
