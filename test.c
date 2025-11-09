@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <errno.h>
+#include <string.h>
 
 // jank method to test if it is linked against musl libc or glibc
 #define _GNU_SOURCE
@@ -40,9 +42,10 @@ int main(void) {
     // test fpu math
     double result = sqrt(16.0);
     if (result != 4.0) {
-        printf("\ntest FAILED (sqrt(16) = %f)\n", result);
+        printf("\nfloating point math FAILED (sqrt(16) = %f)\n", result);
         return 1;
     }
+    printf("floating point math PASSED\n");
     
     // test malloc
     void *ptr = malloc(1024);
@@ -50,7 +53,43 @@ int main(void) {
         printf("\nmemory allocation FAILED\n");
         return 1;
     }
+    printf("\nmemory allocation PASSED\n");
     free(ptr);
+
+    // test file i/o
+    const char* test_file = "/tmp/cross_compile_test.txt";
+    const char* test_str = "aevkoflhbvlypfnvuyktvlnstulhvs";
+    FILE* f = fopen(test_file, "w");
+    if (f == NULL) {
+        printf("file i/o FAILED (cannot open file for writing /tmp): errno %d\n", errno);
+        return 1;
+    }
+    fprintf(f, "%s", test_str);
+    fclose(f);
+
+    f = fopen(test_file, "r");
+    if (f == NULL) {
+        printf("file i/o FAILED (cannot open file for reading /tmp)\n");
+        remove(test_file);
+        return 1;
+    }
+    char buffer[100];
+    if (fgets(buffer, sizeof(buffer), f) != NULL) {
+        if (memcmp(buffer, test_str, strlen(test_str)) != 0) {
+            printf("file i/o FAILED (read mismatch: \"%s\")\n", buffer);
+            fclose(f);
+            remove(test_file);
+            return 1;
+        }
+        printf("file i/o PASSED\n");
+    } else {
+        printf("file i/o FAILED (failed to read back data)\n");
+        fclose(f);
+        remove(test_file);
+        return 1;
+    }
+    fclose(f);
+    remove(test_file);
     
     printf("\ntests PASSED\n");
     
