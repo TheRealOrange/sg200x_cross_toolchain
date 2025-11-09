@@ -35,23 +35,21 @@ RUN ./build.sh ${TARGET}
 # we will just use official toolchains
 
 # cross-compile container
-FROM debian:12-slim AS cross-compile
+FROM alpine:3.22.2 AS cross-compile
 
 ARG TARGETARCH
 
 # install base dependencies
-RUN apt-get update && \
-    apt-get install -y \
+RUN apk add --no-cache \
         wget \
-        xz-utils \
+        xz \
         make \
-        gdb-multiarch \
+        gdb \
         openssh-server \
-        && \
-    apt-get -y remove --purge --auto-remove cmake && \
-    rm -rf /var/lib/apt/lists/*
+        bash \
+        libstdc++
 
-# install newer cmake from official kitware binary
+# install cmake from official kitware binary
 ARG CMAKE_VERSION
 RUN wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -O /tmp/cmake-install.sh && \
     chmod +x /tmp/cmake-install.sh && \
@@ -114,9 +112,10 @@ RUN echo 'export PATH="/opt/toolchain/bin:$PATH"' >> /root/.bashrc
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
 # enable ssh
-RUN mkdir -p /run/sshd && \
+RUN ssh-keygen -A && \
     echo 'root:root' | chpasswd && \
-    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
 # set up envars for cross compilation environment based on TARGET
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
@@ -147,17 +146,12 @@ ENV CMAKE_SYSROOT_DIR=/opt/sysroot
 WORKDIR /workspace
 EXPOSE 22
 
-CMD ["/usr/sbin/sshd", "-D"]
+CMD ["/usr/sbin/sshd", "-D", "-e"]
 
 # test stage to validate cross-compilation
-FROM cross-compile AS test
+FROM cross-compile AS test-build
 
 ARG TARGETARCH
-
-# install qemu for running cross-compiled binaries
-RUN apt-get update && \
-    apt-get install -y qemu-user-static && \
-    rm -rf /var/lib/apt/lists/*
 
 COPY CMakeLists.txt /test/
 COPY *.c /test/
@@ -180,12 +174,29 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
 
 RUN cmake --build /test/build
 
+FROM --platform=linux/amd64 alpine:3.22.2 AS test
+
+# install qemu
+RUN apk add --no-cache qemu-aarch64 qemu-riscv64
+
+ARG TARGETARCH
+ARG TARGET
+
+WORKDIR /workspace
+
+# copy the sysroot from the builder stage
+COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
+
+# copy the binary from the test-build stage
+COPY --from=test-build /test/build/test_exec /workspace/test_exec
+
+# run test with qemu
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
-        echo "running test with qemu riscv64..." && \
-        qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
+        echo "running test with qemu riscv64 (generic rv64 CPU)..." && \
+        qemu-riscv64 -cpu rv64 -L /opt/sysroot /workspace/test_exec; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-        echo "running test with qemu arm64..." && \
-        qemu-aarch64-static -L /opt/sysroot /test/build/test_exec; \
+        echo "running test with qemu arm64 (cortex-a53 CPU)..." && \
+        qemu-aarch64 -cpu cortex-a53 -L /opt/sysroot /workspace/test_exec; \
     fi
 
 # set cross-compile back as default stage
