@@ -35,25 +35,27 @@ RUN ./build.sh ${TARGET}
 # we will just use official toolchains
 
 # cross-compile container
-FROM alpine:3.22.2 AS cross-compile
+FROM debian:12-slim AS cross-compile
 
 ARG TARGETARCH
 
 # install base dependencies
-RUN apk add --no-cache \
+RUN apt-get update && \
+    apt-get install -y \
         wget \
-        xz \
+        xz-utils \
         make \
-        gdb \
+        gdb-multiarch \
         openssh-server \
-        bash \
-        libc6-compat
+        && \
+    apt-get -y remove --purge --auto-remove cmake && \
+    rm -rf /var/lib/apt/lists/*
 
 # install cmake from official kitware binary
 ARG CMAKE_VERSION
-RUN wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -O /tmp/cmake-install.sh && \
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -O /tmp/cmake-install.sh && \
     chmod +x /tmp/cmake-install.sh && \
-    /tmp/cmake-install.sh --skip-license --prefix=/usr && \
+    /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
     rm /tmp/cmake-install.sh && \
     cmake --version
 
@@ -112,10 +114,9 @@ RUN echo 'export PATH="/opt/toolchain/bin:$PATH"' >> /root/.bashrc
 COPY --from=builder /build/sdk/buildroot/output/${TARGET}/staging /opt/sysroot
 
 # enable ssh
-RUN ssh-keygen -A && \
+RUN mkdir -p /run/sshd && \
     echo 'root:root' | chpasswd && \
-    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # set up envars for cross compilation environment based on TARGET
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
@@ -146,7 +147,7 @@ ENV CMAKE_SYSROOT_DIR=/opt/sysroot
 WORKDIR /workspace
 EXPOSE 22
 
-CMD ["/usr/sbin/sshd", "-D", "-e"]
+CMD ["/usr/sbin/sshd", "-D"]
 
 # test stage to validate cross-compilation
 FROM cross-compile AS test-build
