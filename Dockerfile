@@ -96,22 +96,6 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         mkdir -p /opt/toolchain && \
         tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
         rm /tmp/toolchain.tar.xz; \
-    elif echo "${TARGET}" | grep -qi "arm"; then \
-        # Map TARGETARCH to ARM's toolchain host naming
-        if [ "${TARGETARCH}" = "amd64" ]; then \
-            TOOLCHAIN_HOST="x86_64"; \
-        elif [ "${TARGETARCH}" = "arm64" ]; then \
-            TOOLCHAIN_HOST="aarch64"; \
-        else \
-            echo "Unsupported TARGETARCH: ${TARGETARCH}"; \
-            exit 1; \
-        fi; \
-        TOOLCHAIN_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-${TOOLCHAIN_HOST}-arm-none-linux-gnueabihf.tar.xz"; \
-        echo "downloading arm toolchain for arm32 (host: ${TOOLCHAIN_HOST}) from: ${TOOLCHAIN_URL}"; \
-        wget -q "${TOOLCHAIN_URL}" -O /tmp/toolchain.tar.xz && \
-        mkdir -p /opt/toolchain && \
-        tar xf /tmp/toolchain.tar.xz -C /opt/toolchain --strip-components=1 && \
-        rm /tmp/toolchain.tar.xz; \
     fi
 
 # add toolchain to path
@@ -135,8 +119,6 @@ RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         fi; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
         CROSS_PREFIX="aarch64-none-linux-gnu"; \
-    elif echo "${TARGET}" | grep -qi "arm"; then \
-        CROSS_PREFIX="arm-none-linux-gnueabihf"; \
     else \
         CROSS_PREFIX="aarch64-none-linux-gnu"; \
     fi && \
@@ -169,31 +151,27 @@ RUN apt-get update && \
     apt-get install -y qemu-user-static && \
     rm -rf /var/lib/apt/lists/*
 
-COPY test.c /test/test.c
+COPY CMakeLists.txt /test/
+COPY *.c /test/
+COPY *.cmake /test/
 
 ARG TARGET
 RUN if echo "${TARGET}" | grep -qi "riscv\|cv180\|cv181"; then \
         if echo "${TARGET}" | grep -qi "musl"; then \
-            CROSS_PREFIX="riscv64-none-linux-musl"; \
+            TOOLCHAIN_FILE="sg200x_riscv64_musl.cmake"; \
         else \
-            CROSS_PREFIX="riscv64-none-linux-gnu"; \
+            TOOLCHAIN_FILE="sg200x_riscv64_gnu.cmake"; \
         fi; \
-        echo "compiling test for riscv64 (${CROSS_PREFIX})..."; \
-        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_riscv /test/test.c -lm && \
+        echo "compiling test for riscv64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && && \
         echo "running test with qemu riscv64..." && \
-        qemu-riscv64-static -L /opt/sysroot /test/test_riscv; \
+        qemu-riscv64-static -L /opt/sysroot /test/build/test_exec; \
     elif echo "${TARGET}" | grep -qi "arm64\|aarch64"; then \
-        CROSS_PREFIX="aarch64-none-linux-gnu"; \
-        echo "compiling test for arm64 (${CROSS_PREFIX})..."; \
-        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_arm64 /test/test.c -lm && \
+        TOOLCHAIN_FILE="sg200x_arm64_gnu.cmake"; \
+        echo "compiling test for arm64 (toolchain file: ${TOOLCHAIN_FILE})..."; \
+        mkdir -p /test/build && cd /test/build && cmake -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} --build /test/ && && \
         echo "running test with qemu arm64..." && \
-        qemu-aarch64-static -L /opt/sysroot /test/test_arm64; \
-    elif echo "${TARGET}" | grep -qi "arm"; then \
-        CROSS_PREFIX="arm-none-linux-gnueabihf"; \
-        echo "compiling test for arm32 (${CROSS_PREFIX})..."; \
-        ${CROSS_PREFIX}-gcc --sysroot=/opt/sysroot -o /test/test_arm32 /test/test.c -lm && \
-        echo "running test with qemu arm32..." && \
-        qemu-arm-static -L /opt/sysroot /test/test_arm32; \
+        qemu-aarch64-static -L /opt/sysroot /test/test_exec; \
     fi
 
 # set cross-compile back as default stage
