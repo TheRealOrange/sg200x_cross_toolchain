@@ -7,6 +7,15 @@
 #include <stdlib.h>
 #include <math.h>
 
+// jank method to test if it is linked against musl libc or glibc
+#define _GNU_SOURCE
+#include <features.h>
+#ifndef __USE_GNU
+    // if __USE_GNU is not defined with _GNU_SOURCE, its probably musl
+    #define __MUSL__
+#endif
+#undef _GNU_SOURCE
+
 int main(void) {
     printf("s200x cross-compile test\n");
     

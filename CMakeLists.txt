@@ -4,3 +4,4 @@ project(test_toolchain C)
 set(CMAKE_C_STANDARD 17)
 
 add_executable(test_exec test.c)
+target_link_libraries(test_exec PRIVATE m)
