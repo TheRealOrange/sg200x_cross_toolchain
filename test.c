@@ -12,7 +12,7 @@ int main(void) {
     
     // Detect architecture
 #if defined(__aarch64__)
-    printf("arch: arm64)\n");
+    printf("arch: arm64\n");
 #elif defined(__riscv)
     printf("arch: riscv64\n");
 #else

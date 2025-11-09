@@ -89,13 +89,27 @@ jobs:
           - linux/arm64
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Maximize Disk Space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          tool-cache: true
 
       # Set up QEMU for multi-platform builds
       # https://github.com/docker/setup-qemu-action
       - name: Docker Setup QEMU
         uses: docker/setup-qemu-action@v3.7.0
+
+      # show available space
+      - name: Display available disk space
+        run: df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       # Set up BuildKit Docker container builder to be able to build
       # multi-platform images and export cache
